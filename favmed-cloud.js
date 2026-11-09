@@ -14,6 +14,8 @@
   });
   let queueVersion = 0;
   let lastQueueSnapshot = null;
+  let queueReadSequence = 0;
+  let queueWritesInProgress = 0;
   let currentProfile = null;
   let resolveAuth;
   let writeChain = Promise.resolve();
@@ -121,6 +123,7 @@
     async readQueue(options) {
       await authReady;
       const publicMode = !!(options && options.publicMode);
+      const readSequence = publicMode ? 0 : ++queueReadSequence;
       let data;
       if (publicMode) {
         const result = await publicClient.rpc("favmed_get_public_queue", { p_day: localDay() });
@@ -131,12 +134,16 @@
       }
       queueVersion = Number(data && data.version || 0);
       const queue = Array.isArray(data && data.queue) ? data.queue : [];
-      if (!publicMode) lastQueueSnapshot = cloneQueueSnapshot(queue);
+      if (!publicMode && readSequence === queueReadSequence && queueWritesInProgress === 0) {
+        lastQueueSnapshot = cloneQueueSnapshot(queue);
+      }
       return publicMode ? queue : await hydratePatientDocuments(queue);
     },
     async writeQueue(queue) {
       await authReady;
       const snapshot = cloneQueueSnapshot(queue);
+      queueReadSequence++;
+      queueWritesInProgress++;
       const operation = writeChain.then(async () => {
         if (!Array.isArray(lastQueueSnapshot)) {
           throw new Error("Atualize a fila antes de salvar novamente.");
@@ -178,7 +185,11 @@
         return true;
       });
       writeChain = operation.catch(() => {});
-      return await operation;
+      try {
+        return await operation;
+      } finally {
+        queueWritesInProgress = Math.max(0, queueWritesInProgress - 1);
+      }
     },
     async uploadPatientDocument(patientId, file) {
       await authReady;
