@@ -487,7 +487,7 @@ if(enableReception)enableReception.addEventListener("click",()=>{
  u.onerror=()=>{if(status)status.textContent="Não foi possível reproduzir. Verifique o volume e as vozes do computador da recepção.";};
  window.speechSynthesis.cancel();window.speechSynthesis.speak(u);
 });
-if(publicMode){document.addEventListener("pointerdown",unlockCallAudio);document.addEventListener("keydown",unlockCallAudio);load().then(async()=>{await refreshSlideshowItems();renderPublic();});if(!serverMode)window.addEventListener("storage",e=>{if(e.key===KEY){load().then(renderPublic);}});setInterval(()=>{load().then(renderPublic);},1200);setInterval(refreshSlideshowItems,15000);}
+if(publicMode){document.addEventListener("pointerdown",unlockCallAudio);document.addEventListener("keydown",unlockCallAudio);load().then(async()=>{await refreshSlideshowItems();renderPublic();});if(!serverMode)window.addEventListener("storage",e=>{if(e.key===KEY){load().then(renderPublic);}});setInterval(()=>{if(document.visibilityState==="visible")load().then(renderPublic);},10000);setInterval(refreshSlideshowItems,15000);}
 else{load().then(()=>{render();renderPublic();});setInterval(()=>{load().then(()=>{render();renderPublic();});},1800);const opener=$("openDisplay");if(opener)opener.addEventListener("click",()=>{const display=window.open(new URL("/sala",location.origin).href,"favmedSalaEspera");if(!display)notify("O navegador bloqueou a janela. Permita pop-ups para este arquivo e tente novamente.");});}
 })();
 </script>
