@@ -171,16 +171,25 @@
           }
         }
         const committed = new Map(before);
-        for (const change of changes) {
-          const data = await rpc("favmed_update_queue_patient", {
-            p_patient_id: change.id,
-            p_patient: change.newPatient,
-            p_expected_patient: change.oldPatient
-          });
-          queueVersion = Number(data && data.version || queueVersion + 1);
-          if (change.newPatient) committed.set(change.id, change.newPatient);
-          else committed.delete(change.id);
-          lastQueueSnapshot = Array.from(committed.values());
+        let appliedChanges = 0;
+        try {
+          for (const change of changes) {
+            const data = await rpc("favmed_update_queue_patient", {
+              p_patient_id: change.id,
+              p_patient: change.newPatient,
+              p_expected_patient: change.oldPatient
+            });
+            queueVersion = Number(data && data.version || queueVersion + 1);
+            if (change.newPatient) committed.set(change.id, change.newPatient);
+            else committed.delete(change.id);
+            appliedChanges++;
+            lastQueueSnapshot = Array.from(committed.values());
+          }
+        } catch (error) {
+          // A multi-patient action may have committed some individual RPCs.
+          // Force a fresh read before any retry so stale UI data cannot undo them.
+          if (appliedChanges > 0) lastQueueSnapshot = null;
+          throw error;
         }
         return true;
       });
