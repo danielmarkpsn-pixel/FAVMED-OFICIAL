@@ -1116,7 +1116,7 @@ async function renderPublicWaitingRoom() {
   document.addEventListener('pointerdown', unlockCallAudio, { once: true });
   document.addEventListener('keydown', unlockCallAudio, { once: true });
   refreshCalls();
-  window.setInterval(refreshCalls, 1500);
+  window.setInterval(refreshCalls, 10000);
 }
 async function start() {
   if (!configured) return renderSetup();
