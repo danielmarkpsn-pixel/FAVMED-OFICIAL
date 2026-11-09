@@ -13,6 +13,7 @@
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
   let queueVersion = 0;
+  let lastQueueSnapshot = null;
   let currentProfile = null;
   let resolveAuth;
   let writeChain = Promise.resolve();
@@ -38,6 +39,14 @@
     }
     return result.data;
   }
+  function cloneQueueSnapshot(queue) {
+    return (Array.isArray(queue) ? queue : []).map(patient => {
+      const copy = JSON.parse(JSON.stringify(patient));
+      if (copy && copy.document && copy.document.path) delete copy.document.url;
+      return copy;
+    });
+  }
+
   async function createSignedUrl(bucket, path) {
     const key = bucket + ":" + path;
     const cached = signedUrlCache.get(key);
@@ -122,20 +131,50 @@
       }
       queueVersion = Number(data && data.version || 0);
       const queue = Array.isArray(data && data.queue) ? data.queue : [];
+      if (!publicMode) lastQueueSnapshot = cloneQueueSnapshot(queue);
       return publicMode ? queue : await hydratePatientDocuments(queue);
     },
     async writeQueue(queue) {
       await authReady;
-      const snapshot = JSON.parse(JSON.stringify(queue));
-      for (const patient of snapshot) {
-        if (patient && patient.document && patient.document.path) delete patient.document.url;
-      }
+      const snapshot = cloneQueueSnapshot(queue);
       const operation = writeChain.then(async () => {
-        const data = await rpc("favmed_set_queue", {
-          p_queue: snapshot,
-          p_expected_version: queueVersion
-        });
-        queueVersion = Number(data && data.version || queueVersion + 1);
+        if (!Array.isArray(lastQueueSnapshot)) {
+          throw new Error("Atualize a fila antes de salvar novamente.");
+        }
+        const before = new Map();
+        const after = new Map();
+        for (const patient of lastQueueSnapshot) {
+          const id = String(patient && patient.id || "");
+          if (!id || before.has(id)) throw new Error("A fila anterior contém identificadores inválidos ou duplicados.");
+          before.set(id, patient);
+        }
+        for (const patient of snapshot) {
+          const id = String(patient && patient.id || "");
+          if (!id || after.has(id)) throw new Error("A fila contém identificadores inválidos ou duplicados.");
+          after.set(id, patient);
+        }
+        const changes = [];
+        for (const [id, oldPatient] of before) {
+          if (!after.has(id)) changes.push({ id, oldPatient, newPatient: null });
+        }
+        for (const [id, newPatient] of after) {
+          const oldPatient = before.has(id) ? before.get(id) : null;
+          if (!oldPatient || JSON.stringify(oldPatient) !== JSON.stringify(newPatient)) {
+            changes.push({ id, oldPatient, newPatient });
+          }
+        }
+        const committed = new Map(before);
+        for (const change of changes) {
+          const data = await rpc("favmed_update_queue_patient", {
+            p_patient_id: change.id,
+            p_patient: change.newPatient,
+            p_expected_patient: change.oldPatient
+          });
+          queueVersion = Number(data && data.version || queueVersion + 1);
+          if (change.newPatient) committed.set(change.id, change.newPatient);
+          else committed.delete(change.id);
+          lastQueueSnapshot = Array.from(committed.values());
+        }
         return true;
       });
       writeChain = operation.catch(() => {});
