@@ -1143,8 +1143,30 @@ async function renderPublicWaitingRoom() {
   audioButton.addEventListener('click', unlockCallAudio);
   document.addEventListener('pointerdown', unlockCallAudio, { once: true });
   document.addEventListener('keydown', unlockCallAudio, { once: true });
+
+  // Atualização imediata por mudanças nas tabelas que alimentam a view pública.
+  // A view em si não recebe eventos Postgres Changes; por isso assinamos suas tabelas-base.
+  let publicRefreshTimer = null;
+  const schedulePublicRefresh = () => {
+    if (publicRefreshTimer) window.clearTimeout(publicRefreshTimer);
+    publicRefreshTimer = window.setTimeout(() => {
+      publicRefreshTimer = null;
+      if (document.visibilityState === 'visible') void refreshCalls();
+    }, 250);
+  };
+  const publicRealtimeChannel = supabase.channel('favmed-public-waiting-room')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits' }, schedulePublicRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'visit_exams' }, schedulePublicRefresh)
+    .subscribe();
+
+  // Contingência para reconectar/recuperar eventos perdidos; não consulta a cada 10 s.
   refreshCalls();
-  window.setInterval(refreshCalls, 10000);
+  window.setInterval(() => {
+    if (document.visibilityState === 'visible') void refreshCalls();
+  }, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void refreshCalls();
+  });
 }
 async function start() {
   if (!configured) return renderSetup();
