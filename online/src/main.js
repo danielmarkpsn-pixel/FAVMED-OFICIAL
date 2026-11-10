@@ -119,7 +119,7 @@ function renderLogin(message = '', isError = false) {
       const { data: profile, error: profileError } = await supabase.from('profiles')
         .select('role, active, display_name').eq('id', data.user.id).maybeSingle();
       if (profileError || !profile || profile.active !== true || !roleLabels[profile.role]) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         throw new Error('A conta não possui perfil autorizado ou está inativa. Contate o administrador Master.');
       }
       const homePath = ({ master: '/master', recepcao: '/recepcao', profissional: '/profissional', sala: '/sala' })[profile.role];
@@ -165,7 +165,7 @@ function renderPasswordUpdate(isRecovery = false) {
       if (updateError) throw updateError;
       const user = sessionData.session.user;
       const { data: profile, error: profileError } = await supabase.from('profiles').select('role, active, display_name').eq('id', user.id).maybeSingle();
-      if (profileError || !profile || profile.active !== true || !roleLabels[profile.role]) { await supabase.auth.signOut(); throw new Error('A conta não possui perfil autorizado ou está inativa. Contate o administrador Master.'); }
+      if (profileError || !profile || profile.active !== true || !roleLabels[profile.role]) { await supabase.auth.signOut({ scope: 'local' }); throw new Error('A conta não possui perfil autorizado ou está inativa. Contate o administrador Master.'); }
       window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
       renderHome(profile, user.id);
     } catch (error) { status.textContent = error.message || 'Não foi possível atualizar a senha.'; status.className = 'message error'; button.disabled = false; button.textContent = submitLabel; }
@@ -993,7 +993,7 @@ function renderHome(profile, userId) {
     </main>`;
 
   document.querySelector('#sign-out').addEventListener('click', async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     renderLogin('Você saiu da sua conta.');
   });
 
@@ -1169,7 +1169,7 @@ async function start() {
   const { data: profile, error } = await supabase.from('profiles')
     .select('role, active, display_name').eq('id', session.user.id).maybeSingle();
   if (error || !profile || profile.active !== true || !roleLabels[profile.role]) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     return renderLogin('A conta não possui perfil autorizado ou está inativa.', true);
   }
   if (profile.role === 'sala') {
