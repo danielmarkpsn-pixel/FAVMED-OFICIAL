@@ -345,6 +345,7 @@ async function renderOperationalModules(profile, userId) {
   const professionalRoomFilter = document.querySelector('#professional-room-filter');
   let lastPatientsById = new Map();
   let lastVisitsById = new Map();
+  let lastOperationalSnapshot = null;
     if (profile.role === 'recepcao') {
     const { data: savedRooms, error: savedRoomsError } = await supabase.from('rooms')
       .select('id, name, room_type, active').order('display_order').order('name');
@@ -391,7 +392,10 @@ async function renderOperationalModules(profile, userId) {
   if (roomRows && roomResult.data) roomRows.innerHTML = roomResult.data.map((room) => `<tr><td>${escapeHtml(room.name)}</td><td>${escapeHtml(room.room_type)}</td><td><span class="status-pill active">Ativa</span></td><td><button type="button" class="secondary edit-room-button" data-room-id="${escapeHtml(room.id)}" data-room-name="${escapeHtml(room.name)}" data-room-type="${escapeHtml(room.room_type)}">Editar</button></td></tr>`).join('') || '<tr><td colspan="4">Nenhuma sala cadastrada.</td></tr>';
   roomRows?.addEventListener('click', (event) => { const edit = event.target.closest('.edit-room-button'); if (!edit) return; const form = document.querySelector('#room-setup-form'); if (!form) return; form.dataset.editRoomId = edit.dataset.roomId; form.elements.name.value = edit.dataset.roomName; form.elements.room_type.value = edit.dataset.roomType; document.querySelector('#room-create-submit').textContent = 'Atualizar sala'; form.scrollIntoView({behavior:'smooth',block:'center'}); });
 
-  async function loadOperationalRows() {
+  let operationalLoadPromise = null;
+  let operationalLoadPending = false;
+
+  async function loadOperationalRowsNow() {
     const rows = document.querySelector('#operational-rows');
     if (!rows) return;
     rows.innerHTML = '<tr><td colspan="4">Carregando dados…</td></tr>';
@@ -447,7 +451,26 @@ async function renderOperationalModules(profile, userId) {
     renderRows(visits || [], examsResult.data || [], false, patientsResult.data || []);
   }
 
+  function loadOperationalRows() {
+    if (operationalLoadPromise) {
+      operationalLoadPending = true;
+      return operationalLoadPromise;
+    }
+    operationalLoadPromise = (async () => {
+      try {
+        do {
+          operationalLoadPending = false;
+          await loadOperationalRowsNow();
+        } while (operationalLoadPending);
+      } finally {
+        operationalLoadPromise = null;
+      }
+    })();
+    return operationalLoadPromise;
+  }
+
   function renderRows(visits, exams, roomMode, patients = []) {
+    lastOperationalSnapshot = { visits, exams, roomMode, patients };
     const rows = document.querySelector('#operational-rows');
     const count = document.querySelector('#operational-count');
     if (!rows) return;
@@ -620,8 +643,13 @@ async function renderOperationalModules(profile, userId) {
   }
 
   document.querySelector('#refresh-operational').addEventListener('click', loadOperationalRows);
-  document.querySelector('#operational-search').addEventListener('input', () => loadOperationalRows());
-  professionalRoomFilter?.addEventListener('change', () => loadOperationalRows());
+  const rerenderOperationalSnapshot = () => {
+    if (!lastOperationalSnapshot) return;
+    const { visits, exams, roomMode, patients } = lastOperationalSnapshot;
+    renderRows(visits, exams, roomMode, patients);
+  };
+  document.querySelector('#operational-search').addEventListener('input', rerenderOperationalSnapshot);
+  professionalRoomFilter?.addEventListener('change', rerenderOperationalSnapshot);
   document.querySelector('#export-operational-csv').addEventListener('click', () => {
     const tableRows = [...document.querySelectorAll('#operational-rows tr')].map((tr) => [...tr.cells].slice(0, 3).map((cell) => cell.innerText.replace(/\s+/g, ' ').trim()));
     const csv = tableRows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n');
@@ -904,7 +932,7 @@ async function renderOperationalModules(profile, userId) {
     realtimeRefreshTimer = window.setTimeout(() => {
       realtimeRefreshTimer = null;
       void loadOperationalRows();
-    }, 150);
+    }, 300);
   };
   operationalRealtimeChannel = supabase.channel(`favmed-operational-${userId}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, scheduleRealtimeRefresh)
