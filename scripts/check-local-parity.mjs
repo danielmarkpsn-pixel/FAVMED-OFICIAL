@@ -26,7 +26,7 @@ if (!professional.includes("FAVMED — Painel do profissional")) throw new Error
 if (!reception.includes("FAVMED_LOCAL_MODE") || !professional.includes("FAVMED_LOCAL_MODE") || !auth.includes("if (localMode)")) {
   throw new Error("O modo local precisa continuar sem autenticação.");
 }
-for (const rpc of ["favmed_get_queue", "favmed_get_public_queue", "favmed_set_queue"]) {
+for (const rpc of ["favmed_get_queue", "favmed_get_public_queue", "favmed_update_queue_patient"]) {
   if (!cloud.includes(rpc)) throw new Error("Integração Supabase ausente: " + rpc);
 }
 for (const feature of ["uploadPatientDocument", "listSlideshow", "uploadSlideshow"]) {
