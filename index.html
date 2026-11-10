@@ -487,8 +487,30 @@ if(enableReception)enableReception.addEventListener("click",()=>{
  u.onerror=()=>{if(status)status.textContent="Não foi possível reproduzir. Verifique o volume e as vozes do computador da recepção.";};
  window.speechSynthesis.cancel();window.speechSynthesis.speak(u);
 });
-if(publicMode){document.addEventListener("pointerdown",unlockCallAudio);document.addEventListener("keydown",unlockCallAudio);load().then(async()=>{await refreshSlideshowItems();renderPublic();});if(!serverMode)window.addEventListener("storage",e=>{if(e.key===KEY){load().then(renderPublic);}});setInterval(()=>{if(document.visibilityState==="visible")load().then(renderPublic);},10000);setInterval(refreshSlideshowItems,15000);}
-else{load().then(()=>{render();renderPublic();});setInterval(()=>{if(document.visibilityState==="visible")load().then(()=>{render();renderPublic();});},5000);const opener=$("openDisplay");if(opener)opener.addEventListener("click",()=>{const display=window.open(new URL("/sala",location.origin).href,"favmedSalaEspera");if(!display)notify("O navegador bloqueou a janela. Permita pop-ups para este arquivo e tente novamente.");});}
+const cloudQueueMode=!!(window.FAVMED_CLOUD&&!window.FAVMED_LOCAL_MODE&&!serverMode);
+let queueRealtimeRefreshTimer=null;
+if(cloudQueueMode&&!publicMode&&typeof window.FAVMED_CLOUD.subscribeQueueChanges==="function"){
+ window.FAVMED_CLOUD.subscribeQueueChanges(()=>{
+  if(document.visibilityState!=="visible")return;
+  clearTimeout(queueRealtimeRefreshTimer);
+  queueRealtimeRefreshTimer=setTimeout(()=>load().then(()=>{render();renderPublic();}),250);
+ });
+}
+if(publicMode){
+ document.addEventListener("pointerdown",unlockCallAudio);
+ document.addEventListener("keydown",unlockCallAudio);
+ load().then(async()=>{await refreshSlideshowItems();renderPublic();});
+ if(!serverMode)window.addEventListener("storage",e=>{if(e.key===KEY){load().then(renderPublic);}});
+ setInterval(()=>{if(document.visibilityState==="visible")load().then(renderPublic);},10000);
+ setInterval(refreshSlideshowItems,cloudQueueMode?300000:15000);
+ window.addEventListener("focus",()=>{if(document.visibilityState==="visible")load().then(renderPublic);});
+}else{
+ load().then(()=>{render();renderPublic();});
+ setInterval(()=>{if(document.visibilityState==="visible")load().then(()=>{render();renderPublic();});},cloudQueueMode?60000:5000);
+ window.addEventListener("focus",()=>{if(document.visibilityState==="visible")load().then(()=>{render();renderPublic();});});
+ const opener=$("openDisplay");
+ if(opener)opener.addEventListener("click",()=>{const display=window.open(new URL("/sala",location.origin).href,"favmedSalaEspera");if(!display)notify("O navegador bloqueou a janela. Permita pop-ups para este arquivo e tente novamente.");});
+}
 })();
 </script>
 </body>

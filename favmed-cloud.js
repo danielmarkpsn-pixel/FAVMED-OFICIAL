@@ -120,6 +120,24 @@
       currentProfile = profile;
       resolveAuth(profile);
     },
+    subscribeQueueChanges(callback) {
+      if (typeof callback !== "function") return null;
+      let active = true;
+      let channel = null;
+      authReady.then(profile => {
+        if (!active || !profile || !["master", "recepcao", "profissional"].includes(profile.role)) return;
+        channel = client.channel("favmed-queue-staff", { config: { private: true } });
+        channel
+          .on("broadcast", { event: "queue_changed" }, payload => {
+            if (active) callback(payload);
+          })
+          .subscribe();
+      }).catch(() => {});
+      return () => {
+        active = false;
+        if (channel) void client.removeChannel(channel);
+      };
+    },
     async readQueue(options) {
       await authReady;
       const publicMode = !!(options && options.publicMode);
