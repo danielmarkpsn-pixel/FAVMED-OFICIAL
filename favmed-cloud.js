@@ -8,10 +8,8 @@
   const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
-  // Never reuse a staff login stored in the hallway browser.
-  const publicClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-  });
+  // The public waiting-room queue is fetched through the same-origin API,
+  // which applies a short-lived Redis cache and falls back to Supabase.
   let queueVersion = 0;
   let lastQueueSnapshot = null;
   let queueReadSequence = 0;
@@ -144,9 +142,20 @@
       const readSequence = publicMode ? 0 : ++queueReadSequence;
       let data;
       if (publicMode) {
-        const result = await publicClient.rpc("favmed_get_public_queue", { p_day: localDay() });
-        if (result.error) throw new Error(result.error.message || "Não foi possível carregar as chamadas públicas.");
-        data = result.data;
+        const response = await fetch("/api/public-queue", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin"
+        });
+        if (!response.ok) {
+          let message = "Não foi possível carregar as chamadas públicas.";
+          try {
+            const body = await response.json();
+            if (body && body.error) message = body.error;
+          } catch (_) {}
+          throw new Error(message);
+        }
+        data = await response.json();
       } else {
         data = await rpc("favmed_get_queue");
       }
