@@ -21,6 +21,9 @@
   <div class="note"><strong>Segurança:</strong> não utiliza dados de pacientes, não altera a fila e não mostra nem armazena seu token de acesso. A chave de teste expira automaticamente em 30 segundos.</div>
   <button class="btn" id="run" type="button">Testar conexão Redis</button>
   <div class="result" id="result" role="status" aria-live="polite">Aguardando o teste.</div>
+  <div class="note"><strong>Etapa 2 — Cache da sala de espera:</strong> verifica duas leituras consecutivas da fila pública. A tela mostra somente a quantidade de registros e a versão, nunca os nomes. O cache expira em 5 segundos e o Supabase continua sendo a fonte oficial.</div>
+  <button class="btn" id="cacheRun" type="button">Testar cache da sala de espera</button>
+  <div class="result" id="cacheResult" role="status" aria-live="polite">Aguardando o teste do cache.</div>
   <p class="muted" style="font-size:12px;margin:18px 0 0"><a href="/">Voltar ao FAVMED</a></p>
 </main>
 <script>
@@ -72,6 +75,53 @@
     } finally {
       button.disabled = false;
       button.textContent = "Testar novamente";
+    }
+  });
+
+  const cacheButton = document.getElementById("cacheRun");
+  const cacheOutput = document.getElementById("cacheResult");
+  cacheButton.addEventListener("click", async () => {
+    cacheButton.disabled = true;
+    cacheButton.textContent = "Testando cache...";
+    cacheOutput.textContent = "Fazendo duas leituras consecutivas...";
+    cacheOutput.className = "result";
+    try {
+      const checks = [];
+      for (let i = 0; i < 2; i++) {
+        const response = await fetch("/api/public-queue", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin"
+        });
+        const payload = await response.json();
+        if (!response.ok || !Array.isArray(payload.queue)) {
+          throw new Error("A consulta pública falhou (HTTP " + response.status + ").");
+        }
+        checks.push({
+          status: response.status,
+          cache: response.headers.get("X-FAVMED-Redis-Cache") || "indisponível",
+          count: payload.queue.length,
+          version: payload.version
+        });
+      }
+      const lines = checks.map((item, index) =>
+        "Leitura " + (index + 1) + ": HTTP " + item.status +
+        " · Redis " + item.cache +
+        " · registros " + item.count +
+        " · versão " + item.version
+      );
+      const passed = checks[1].cache === "HIT";
+      cacheOutput.textContent = (passed ? "CACHE REDIS APROVADO" : "CACHE AINDA NÃO CONFIRMADO") +
+        "\\n" + lines.join("\\n") +
+        "\\nNenhum nome ou dado de paciente foi exibido.";
+      cacheOutput.className = "result " + (passed ? "success" : "error");
+    } catch (error) {
+      cacheOutput.textContent = "TESTE DO CACHE NÃO CONCLUÍDO\\n" +
+        (error && error.message ? error.message : "Erro inesperado.");
+      cacheOutput.className = "result error";
+    } finally {
+      cacheButton.disabled = false;
+      cacheButton.textContent = "Testar novamente o cache";
     }
   });
 })();
