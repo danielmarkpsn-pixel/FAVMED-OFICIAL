@@ -63,11 +63,15 @@ for (const required of [
   if (!auth.includes(required)) throw new Error("A sala de espera deve abrir sem login: " + required);
 }
 for (const required of [
-  'const publicClient = window.supabase.createClient',
-  'persistSession: false',
-  'publicClient.rpc("favmed_get_public_queue"'
+  'fetch("/api/public-queue", {',
+  'cache: "no-store"',
+  'credentials: "same-origin"'
 ]) {
-  if (!cloud.includes(required)) throw new Error("A leitura pública isolada da fila está ausente: " + required);
+  if (!cloud.includes(required)) throw new Error("A leitura pública da fila pelo endpoint com cache está ausente: " + required);
+}
+const publicQueueApi = readFileSync("api/public-queue.js", "utf8");
+for (const required of ["Redis.fromEnv()", "CACHE_TTL_SECONDS", "favmed_get_public_queue", "validPayload"]) {
+  if (!publicQueueApi.includes(required)) throw new Error("O endpoint público da fila não possui a proteção esperada: " + required);
 }
 const publicDisplayMigration = readFileSync("online/supabase/migrations/20261106163834_public_waiting_room_display.sql", "utf8");
 const publicDisplayGrantMigration = readFileSync("online/supabase/migrations/20261106164044_limit_waiting_room_rpc_to_anon.sql", "utf8");
