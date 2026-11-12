@@ -32,6 +32,13 @@ for (const rpc of ["favmed_get_queue", "favmed_get_public_queue", "favmed_update
 for (const feature of ["uploadPatientDocument", "listSlideshow", "uploadSlideshow"]) {
   if (!cloud.includes(feature)) throw new Error("Integração Storage ausente: " + feature);
 }
+if (cloud.includes("data && data.path") || !cloud.includes("const storedPath = path;")) {
+  throw new Error("O envio de documentos deve usar o caminho de Storage gerado antes do upload.");
+}
+if (!cloud.includes('conflict.code = "QUEUE_CONFLICT"') ||
+    !cloud.includes('if (error && error.code === "QUEUE_CONFLICT")')) {
+  throw new Error("Conflitos da fila devem invalidar o snapshot local para impedir novas gravações desatualizadas.");
+}
 if (reception.includes("dashboard-shell") || reception.includes("createRoot(")) {
   throw new Error("A interface reconstruída da pasta online não pode substituir a tela local.");
 }
