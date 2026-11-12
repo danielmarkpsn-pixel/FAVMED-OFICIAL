@@ -39,6 +39,23 @@ if (!cloud.includes('conflict.code = "QUEUE_CONFLICT"') ||
     !cloud.includes('if (error && error.code === "QUEUE_CONFLICT")')) {
   throw new Error("Conflitos da fila devem invalidar o snapshot local para impedir novas gravações desatualizadas.");
 }
+if (!cloud.includes('rpc("favmed_update_queue_patients"') ||
+    !cloud.includes('p_changes: changes.map') ||
+    !cloud.includes('if (!isMissingRpc(error)) throw error;')) {
+  throw new Error("As alterações da fila devem usar gravação em lote e manter compatibilidade com bancos sem a nova RPC.");
+}
+const batchMigration = readFileSync("supabase/migrations/20261112000000_favmed_queue_batch_writes.sql", "utf8");
+for (const required of [
+  "favmed_update_queue_patients",
+  "pg_advisory_xact_lock",
+  "QUEUE_CONFLICT",
+  "jsonb_agg",
+  "v_new_version := v_version + 1",
+  "revoke all on function public.favmed_update_queue_patients(jsonb) from public, anon",
+  "grant execute on function public.favmed_update_queue_patients(jsonb) to authenticated"
+]) {
+  if (!batchMigration.includes(required)) throw new Error("Migração de gravação em lote ausente ou incompleta: " + required);
+}
 if (reception.includes("dashboard-shell") || reception.includes("createRoot(")) {
   throw new Error("A interface reconstruída da pasta online não pode substituir a tela local.");
 }
