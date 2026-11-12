@@ -37,9 +37,18 @@
         conflict.code = "QUEUE_CONFLICT";
         throw conflict;
       }
-      throw new Error(message);
+      const error = new Error(message);
+      error.code = result.error.code || "";
+      throw error;
     }
     return result.data;
+  }
+  function isMissingRpc(error) {
+    return !!error && (
+      error.code === "PGRST202" ||
+      error.code === "42883" ||
+      /could not find the function|function .* does not exist|schema cache.*function/i.test(error.message || "")
+    );
   }
   function cloneQueueSnapshot(queue) {
     return (Array.isArray(queue) ? queue : []).map(patient => {
@@ -202,17 +211,37 @@
         const committed = new Map(before);
         let appliedChanges = 0;
         try {
-          for (const change of changes) {
-            const data = await rpc("favmed_update_queue_patient", {
-              p_patient_id: change.id,
-              p_patient: change.newPatient,
-              p_expected_patient: change.oldPatient
-            });
-            queueVersion = Number(data && data.version || queueVersion + 1);
-            if (change.newPatient) committed.set(change.id, change.newPatient);
-            else committed.delete(change.id);
-            appliedChanges++;
-            lastQueueSnapshot = Array.from(committed.values());
+          if (changes.length) {
+            try {
+              // One transaction, one queue version increment and one Realtime event
+              // for the complete user action, regardless of the number of patients.
+              const data = await rpc("favmed_update_queue_patients", {
+                p_changes: changes.map(change => ({
+                  id: change.id,
+                  expected: change.oldPatient,
+                  patient: change.newPatient
+                }))
+              });
+              queueVersion = Number(data && data.version || queueVersion + 1);
+              appliedChanges = changes.length;
+              lastQueueSnapshot = snapshot;
+            } catch (error) {
+              // Keep compatibility with projects where the batch migration has not
+              // yet been installed. Only a missing-function response may fall back.
+              if (!isMissingRpc(error)) throw error;
+              for (const change of changes) {
+                const data = await rpc("favmed_update_queue_patient", {
+                  p_patient_id: change.id,
+                  p_patient: change.newPatient,
+                  p_expected_patient: change.oldPatient
+                });
+                queueVersion = Number(data && data.version || queueVersion + 1);
+                if (change.newPatient) committed.set(change.id, change.newPatient);
+                else committed.delete(change.id);
+                appliedChanges++;
+                lastQueueSnapshot = Array.from(committed.values());
+              }
+            }
           }
         } catch (error) {
           // Never keep a stale snapshot after a concurrency conflict.
