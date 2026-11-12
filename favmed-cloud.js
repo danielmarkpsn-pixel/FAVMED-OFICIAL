@@ -33,7 +33,9 @@
     if (result.error) {
       const message = result.error.message || "Falha de comunicação com o Supabase.";
       if (result.error.code === "40001" || /QUEUE_CONFLICT/.test(message)) {
-        throw new Error("A fila foi atualizada em outro dispositivo. Atualize a tela antes de salvar novamente.");
+        const conflict = new Error("A fila foi atualizada em outro dispositivo. Atualize a tela antes de salvar novamente.");
+        conflict.code = "QUEUE_CONFLICT";
+        throw conflict;
       }
       throw new Error(message);
     }
@@ -213,6 +215,12 @@
             lastQueueSnapshot = Array.from(committed.values());
           }
         } catch (error) {
+          // Never keep a stale snapshot after a concurrency conflict.
+          // This prevents repeated writes against the same outdated patient state.
+          if (error && error.code === "QUEUE_CONFLICT") {
+            lastQueueSnapshot = null;
+            queueReadSequence++;
+          }
           // A multi-patient action may have committed some individual RPCs.
           // Force a fresh read before any retry so stale UI data cannot undo them.
           if (appliedChanges > 0) lastQueueSnapshot = null;
@@ -244,7 +252,8 @@
         });
         if (error) throw error;
       }
-      const storedPath = data && data.path || path;
+      // The destination path is generated before upload and is the canonical Storage path.
+      const storedPath = path;
       const url = await createSignedUrl("favmed-documents", storedPath);
       return { name: file.name, path: storedPath, url };
     },
