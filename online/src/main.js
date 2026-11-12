@@ -10,6 +10,7 @@ const configured = Boolean(supabaseUrl && supabaseKey);
 // Supabase PKCE recovery links can arrive as ?code=... without type=recovery.
 // PASSWORD_RECOVERY is the reliable signal for that flow.
 let passwordRecoveryInProgress = false;
+let operationalRealtimeChannel = null;
 const supabase = configured ? createClient(supabaseUrl, supabaseKey, {
   auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true },
 }) : null;
@@ -118,12 +119,15 @@ function renderLogin(message = '', isError = false) {
       const { data: profile, error: profileError } = await supabase.from('profiles')
         .select('role, active, display_name').eq('id', data.user.id).maybeSingle();
       if (profileError || !profile || profile.active !== true || !roleLabels[profile.role]) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         throw new Error('A conta não possui perfil autorizado ou está inativa. Contate o administrador Master.');
       }
       const homePath = ({ master: '/master', recepcao: '/recepcao', profissional: '/profissional', sala: '/sala' })[profile.role];
       window.history.replaceState({}, document.title, homePath);
-      if (profile.role === 'sala') return renderPublicWaitingRoom();
+      if (profile.role === 'sala') {
+    if (window.location.pathname !== '/sala') window.history.replaceState({}, document.title, '/sala');
+    return renderPublicWaitingRoom();
+  }
       renderHome(profile, data.user.id);
     } catch (error) {
       status.textContent = error.message || 'Falha ao validar o acesso.';
@@ -161,7 +165,7 @@ function renderPasswordUpdate(isRecovery = false) {
       if (updateError) throw updateError;
       const user = sessionData.session.user;
       const { data: profile, error: profileError } = await supabase.from('profiles').select('role, active, display_name').eq('id', user.id).maybeSingle();
-      if (profileError || !profile || profile.active !== true || !roleLabels[profile.role]) { await supabase.auth.signOut(); throw new Error('A conta não possui perfil autorizado ou está inativa. Contate o administrador Master.'); }
+      if (profileError || !profile || profile.active !== true || !roleLabels[profile.role]) { await supabase.auth.signOut({ scope: 'local' }); throw new Error('A conta não possui perfil autorizado ou está inativa. Contate o administrador Master.'); }
       window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
       renderHome(profile, user.id);
     } catch (error) { status.textContent = error.message || 'Não foi possível atualizar a senha.'; status.className = 'message error'; button.disabled = false; button.textContent = submitLabel; }
@@ -193,9 +197,15 @@ function renderUserRows(users) {
   return users.map((user) => `
     <tr>
       <td><strong>${escapeHtml(user.display_name)}</strong><br><small>${escapeHtml(user.id)}</small></td>
-      <td>${escapeHtml(roleLabels[user.role] || user.role)}</td>
+      <td>${user.role === 'master' ? escapeHtml(roleLabels.master) : `
+        <select class="user-role-select" aria-label="Função de ${escapeHtml(user.display_name)}" data-user-id="${escapeHtml(user.id)}">
+          <option value="recepcao" ${user.role === 'recepcao' ? 'selected' : ''}>Recepção</option>
+          <option value="profissional" ${user.role === 'profissional' ? 'selected' : ''}>Profissional</option>
+          <option value="sala" ${user.role === 'sala' ? 'selected' : ''}>Sala de chamadas</option>
+        </select>`}</td>
       <td><span class="status-pill ${user.active ? 'active' : 'inactive'}">${user.active ? 'Ativa' : 'Bloqueada'}</span></td>
       <td>${user.role === 'master' ? '<span class="muted">Protegida</span>' : `
+        <button class="secondary user-role-save" type="button" data-user-id="${escapeHtml(user.id)}">Salvar função</button>
         <button class="secondary user-toggle" type="button" data-user-id="${escapeHtml(user.id)}" data-next-active="${!user.active}">
           ${user.active ? 'Bloquear' : 'Ativar'}
         </button>`}</td>
@@ -313,7 +323,7 @@ async function renderOperationalModules(profile, userId) {
         <button class="secondary" id="export-operational-csv" type="button">Exportar CSV</button>
         ${profile.role === 'recepcao' ? '<button class="secondary" id="backup-operational-json" type="button">Backup JSON</button>' : ''}
       </div>
-      \${profile.role === 'profissional'
+      ${profile.role === 'profissional'
         ? '<div id="operational-rows" class="professional-cards"><div class="empty">Carregando fila compartilhada…</div></div>'
         : '<div class="table-wrap"><table class="users-table operational-table"><thead><tr><th>Paciente</th><th>Salas</th><th>Status</th><th>Ação</th></tr></thead><tbody id="operational-rows"><tr><td colspan="4">Carregando dados…</td></tr></table></div>'}
       <p id="operational-message" class="message" role="status"></p>
@@ -335,6 +345,7 @@ async function renderOperationalModules(profile, userId) {
   const professionalRoomFilter = document.querySelector('#professional-room-filter');
   let lastPatientsById = new Map();
   let lastVisitsById = new Map();
+  let lastOperationalSnapshot = null;
     if (profile.role === 'recepcao') {
     const { data: savedRooms, error: savedRoomsError } = await supabase.from('rooms')
       .select('id, name, room_type, active').order('display_order').order('name');
@@ -381,7 +392,10 @@ async function renderOperationalModules(profile, userId) {
   if (roomRows && roomResult.data) roomRows.innerHTML = roomResult.data.map((room) => `<tr><td>${escapeHtml(room.name)}</td><td>${escapeHtml(room.room_type)}</td><td><span class="status-pill active">Ativa</span></td><td><button type="button" class="secondary edit-room-button" data-room-id="${escapeHtml(room.id)}" data-room-name="${escapeHtml(room.name)}" data-room-type="${escapeHtml(room.room_type)}">Editar</button></td></tr>`).join('') || '<tr><td colspan="4">Nenhuma sala cadastrada.</td></tr>';
   roomRows?.addEventListener('click', (event) => { const edit = event.target.closest('.edit-room-button'); if (!edit) return; const form = document.querySelector('#room-setup-form'); if (!form) return; form.dataset.editRoomId = edit.dataset.roomId; form.elements.name.value = edit.dataset.roomName; form.elements.room_type.value = edit.dataset.roomType; document.querySelector('#room-create-submit').textContent = 'Atualizar sala'; form.scrollIntoView({behavior:'smooth',block:'center'}); });
 
-  async function loadOperationalRows() {
+  let operationalLoadPromise = null;
+  let operationalLoadPending = false;
+
+  async function loadOperationalRowsNow() {
     const rows = document.querySelector('#operational-rows');
     if (!rows) return;
     rows.innerHTML = '<tr><td colspan="4">Carregando dados…</td></tr>';
@@ -437,7 +451,26 @@ async function renderOperationalModules(profile, userId) {
     renderRows(visits || [], examsResult.data || [], false, patientsResult.data || []);
   }
 
+  function loadOperationalRows() {
+    if (operationalLoadPromise) {
+      operationalLoadPending = true;
+      return operationalLoadPromise;
+    }
+    operationalLoadPromise = (async () => {
+      try {
+        do {
+          operationalLoadPending = false;
+          await loadOperationalRowsNow();
+        } while (operationalLoadPending);
+      } finally {
+        operationalLoadPromise = null;
+      }
+    })();
+    return operationalLoadPromise;
+  }
+
   function renderRows(visits, exams, roomMode, patients = []) {
+    lastOperationalSnapshot = { visits, exams, roomMode, patients };
     const rows = document.querySelector('#operational-rows');
     const count = document.querySelector('#operational-count');
     if (!rows) return;
@@ -610,8 +643,13 @@ async function renderOperationalModules(profile, userId) {
   }
 
   document.querySelector('#refresh-operational').addEventListener('click', loadOperationalRows);
-  document.querySelector('#operational-search').addEventListener('input', () => loadOperationalRows());
-  professionalRoomFilter?.addEventListener('change', () => loadOperationalRows());
+  const rerenderOperationalSnapshot = () => {
+    if (!lastOperationalSnapshot) return;
+    const { visits, exams, roomMode, patients } = lastOperationalSnapshot;
+    renderRows(visits, exams, roomMode, patients);
+  };
+  document.querySelector('#operational-search').addEventListener('input', rerenderOperationalSnapshot);
+  professionalRoomFilter?.addEventListener('change', rerenderOperationalSnapshot);
   document.querySelector('#export-operational-csv').addEventListener('click', () => {
     const tableRows = [...document.querySelectorAll('#operational-rows tr')].map((tr) => [...tr.cells].slice(0, 3).map((cell) => cell.innerText.replace(/\s+/g, ' ').trim()));
     const csv = tableRows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n');
@@ -881,6 +919,28 @@ async function renderOperationalModules(profile, userId) {
       if (cancelExamCallButton) cancelExamCallButton.disabled = false;
     }
   });
+
+  // Atualiza os painéis em todos os dispositivos quando a fila compartilhada muda.
+  // A tela de chamadas continua usando sua consulta periódica independente.
+  if (operationalRealtimeChannel) {
+    await supabase.removeChannel(operationalRealtimeChannel);
+    operationalRealtimeChannel = null;
+  }
+  let realtimeRefreshTimer = null;
+  const scheduleRealtimeRefresh = () => {
+    if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+    realtimeRefreshTimer = window.setTimeout(() => {
+      realtimeRefreshTimer = null;
+      void loadOperationalRows();
+    }, 300);
+  };
+  operationalRealtimeChannel = supabase.channel(`favmed-operational-${userId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, scheduleRealtimeRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits' }, scheduleRealtimeRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'visit_exams' }, scheduleRealtimeRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, scheduleRealtimeRefresh)
+    .subscribe();
+
   await loadOperationalRows();
 }
 
@@ -912,8 +972,10 @@ function renderHome(profile, userId) {
               <input id="new-email" name="email" type="email" required maxlength="254" autocomplete="email" />
               <label for="new-role">Perfil</label>
               <select id="new-role" name="role" required>
+                <option value="" disabled selected>Selecione a função do usuário</option>
                 <option value="recepcao">Recepção</option>
                 <option value="profissional">Profissional</option>
+                <option value="sala">Sala de chamadas</option>
               </select>
               <button class="submit" id="create-user-submit" type="submit">Criar usuário</button>
               <p id="admin-message" class="message" role="status"></p>
@@ -931,7 +993,7 @@ function renderHome(profile, userId) {
     </main>`;
 
   document.querySelector('#sign-out').addEventListener('click', async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     renderLogin('Você saiu da sua conta.');
   });
 
@@ -977,6 +1039,23 @@ function renderHome(profile, userId) {
 
   refreshButton.addEventListener('click', loadUsers);
   usersBody.addEventListener('click', async (event) => {
+    const roleButton = event.target.closest('.user-role-save');
+    if (roleButton) {
+      const select = usersBody.querySelector(`.user-role-select[data-user-id="${CSS.escape(roleButton.dataset.userId)}"]`);
+      if (!select) return;
+      roleButton.disabled = true;
+      adminMessage.textContent = '';
+      try {
+        await callMasterAction({ action: 'set_role', user_id: roleButton.dataset.userId, role: select.value });
+        adminMessage.textContent = 'Função do usuário atualizada. O novo acesso será aplicado no próximo login.';
+        await loadUsers();
+      } catch (error) {
+        adminMessage.textContent = error.message || 'Não foi possível alterar a função.';
+        adminMessage.className = 'message error';
+        roleButton.disabled = false;
+      }
+      return;
+    }
     const button = event.target.closest('.user-toggle');
     if (!button) return;
     button.disabled = true;
@@ -1064,12 +1143,33 @@ async function renderPublicWaitingRoom() {
   audioButton.addEventListener('click', unlockCallAudio);
   document.addEventListener('pointerdown', unlockCallAudio, { once: true });
   document.addEventListener('keydown', unlockCallAudio, { once: true });
+
+  // Atualização imediata por mudanças nas tabelas que alimentam a view pública.
+  // A view em si não recebe eventos Postgres Changes; por isso assinamos suas tabelas-base.
+  let publicRefreshTimer = null;
+  const schedulePublicRefresh = () => {
+    if (publicRefreshTimer) window.clearTimeout(publicRefreshTimer);
+    publicRefreshTimer = window.setTimeout(() => {
+      publicRefreshTimer = null;
+      if (document.visibilityState === 'visible') void refreshCalls();
+    }, 250);
+  };
+  const publicRealtimeChannel = supabase.channel('favmed-public-waiting-room')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits' }, schedulePublicRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'visit_exams' }, schedulePublicRefresh)
+    .subscribe();
+
+  // Contingência para reconectar/recuperar eventos perdidos; não consulta a cada 10 s.
   refreshCalls();
-  window.setInterval(refreshCalls, 1500);
+  window.setInterval(() => {
+    if (document.visibilityState === 'visible') void refreshCalls();
+  }, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void refreshCalls();
+  });
 }
 async function start() {
   if (!configured) return renderSetup();
-  if (window.location.pathname.replace(/\/+$/, '') === '/sala') return renderPublicWaitingRoom();
   // Supabase may return the flow type in the URL hash (implicit flow)
   // or the query string (depending on the email template / redirect setup).
   // Capture it before deciding whether an authenticated session may reach the panel.
@@ -1091,10 +1191,13 @@ async function start() {
   const { data: profile, error } = await supabase.from('profiles')
     .select('role, active, display_name').eq('id', session.user.id).maybeSingle();
   if (error || !profile || profile.active !== true || !roleLabels[profile.role]) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     return renderLogin('A conta não possui perfil autorizado ou está inativa.', true);
   }
-  if (profile.role === 'sala') return renderPublicWaitingRoom();
+  if (profile.role === 'sala') {
+    if (window.location.pathname !== '/sala') window.history.replaceState({}, document.title, '/sala');
+    return renderPublicWaitingRoom();
+  }
   const homePath = ({ master: '/master', recepcao: '/recepcao', profissional: '/profissional' })[profile.role];
   if (homePath && window.location.pathname === '/') window.history.replaceState({}, document.title, homePath);
   renderHome(profile, session.user.id);
@@ -1108,6 +1211,10 @@ if (configured) {
       return;
     }
     if (event === 'SIGNED_OUT') {
+      if (operationalRealtimeChannel) {
+        void supabase.removeChannel(operationalRealtimeChannel);
+        operationalRealtimeChannel = null;
+      }
       passwordRecoveryInProgress = false;
       renderLogin();
     }
