@@ -1090,12 +1090,7 @@ async function renderPublicWaitingRoom() {
   let firstSnapshot = true;
   const seenCallKeys = new Set();
 
-  // Coalesce overlapping refreshes: a slow request must not allow the
-  // interval, Realtime and visibility handlers to query Supabase concurrently.
-  let publicRefreshPromise = null;
-  let publicRefreshPending = false;
-
-  async function refreshCallsNow() {
+  async function refreshCalls() {
     const { data, error } = await supabase.from('public_waiting_room_calls')
       .select('display_name, room_name, called_at, call_status')
       .order('called_at', { ascending: false }).limit(12);
@@ -1128,23 +1123,7 @@ async function renderPublicWaitingRoom() {
     firstSnapshot = false;
   }
 
-  function refreshCalls() {
-    if (publicRefreshPromise) {
-      publicRefreshPending = true;
-      return publicRefreshPromise;
-    }
-    publicRefreshPromise = (async () => {
-      try {
-        do {
-          publicRefreshPending = false;
-          await refreshCallsNow();
-        } while (publicRefreshPending && document.visibilityState === 'visible');
-      } finally {
-        publicRefreshPromise = null;
-      }
-    })();
-    return publicRefreshPromise;
-  }
+
 
   async function unlockCallAudio() {
     if (audioEnabled) return;
