@@ -87,7 +87,16 @@ for (const required of [
   if (!cloud.includes(required)) throw new Error("A leitura pública da fila pelo endpoint com cache está ausente: " + required);
 }
 const publicQueueApi = readFileSync("api/public-queue.js", "utf8");
-for (const required of ["Redis.fromEnv()", "CACHE_TTL_SECONDS", "favmed_get_public_queue", "validPayload"]) {
+for (const required of [
+  "Redis.fromEnv()",
+  "CACHE_TTL_SECONDS",
+  "favmed_get_public_queue",
+  "validPayload",
+  'cacheKey + ":refresh-lock"',
+  "nx: true",
+  "refreshLockContended",
+  "attempt < 5"
+]) {
   if (!publicQueueApi.includes(required)) throw new Error("O endpoint público da fila não possui a proteção esperada: " + required);
 }
 const publicDisplayMigration = readFileSync("online/supabase/migrations/20261106163834_public_waiting_room_display.sql", "utf8");
