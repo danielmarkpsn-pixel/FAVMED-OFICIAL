@@ -39,6 +39,12 @@ if (!cloud.includes('conflict.code = "QUEUE_CONFLICT"') ||
     !cloud.includes('if (error && error.code === "QUEUE_CONFLICT")')) {
   throw new Error("Conflitos da fila devem invalidar o snapshot local para impedir novas gravações desatualizadas.");
 }
+if (!reception.includes('e.code==="QUEUE_CONFLICT"') ||
+    !reception.includes('patients=await window.FAVMED_CLOUD.readQueue({publicMode:false})') ||
+    !professional.includes('e.code==="QUEUE_CONFLICT"') ||
+    !professional.includes('patients=await readQueue()')) {
+  throw new Error("Recepção e profissional devem recarregar a fila após conflito de concorrência.");
+}
 if (!cloud.includes('rpc("favmed_update_queue_patients"') ||
     !cloud.includes('p_changes: changes.map') ||
     !cloud.includes('if (!isMissingRpc(error)) throw error;')) {
