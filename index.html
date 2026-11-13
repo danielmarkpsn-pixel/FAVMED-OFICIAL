@@ -129,7 +129,12 @@ async function save(){
   if(serverMode){const r=await fetch("/api/state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(patients)});if(!r.ok)throw new Error("HTTP "+r.status);return true;}
   if(window.FAVMED_CLOUD&&!window.FAVMED_LOCAL_MODE){await window.FAVMED_CLOUD.writeQueue(patients);return true;}
   localStorage.setItem(KEY,JSON.stringify(patients));return true;
- }catch(e){notify(e.message||"Falha ao salvar. O cadastro não foi confirmado; tente novamente.");return false;}
+ }catch(e){
+  if(e&&e.code==="QUEUE_CONFLICT"&&window.FAVMED_CLOUD&&!window.FAVMED_LOCAL_MODE){
+   try{patients=await window.FAVMED_CLOUD.readQueue({publicMode:false});render();}catch(_){}
+  }
+  notify(e.message||"Falha ao salvar. O cadastro não foi confirmado; tente novamente.");return false;
+ }
  finally{saveInProgress=Math.max(0,saveInProgress-1);}
 }
 function notify(msg){const el=$("toast");el.textContent=msg;el.classList.add("show");clearTimeout(notify.timer);notify.timer=setTimeout(()=>el.classList.remove("show"),2800);}
