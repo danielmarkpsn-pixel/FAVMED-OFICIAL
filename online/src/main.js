@@ -1123,8 +1123,6 @@ async function renderPublicWaitingRoom() {
     firstSnapshot = false;
   }
 
-
-
   async function unlockCallAudio() {
     if (audioEnabled) return;
     audio.muted = true;
