@@ -56,6 +56,36 @@ export default async function handler(req, res) {
     }
   }
 
+  // Coalesce simultaneous cache misses so several waiting-room displays do
+  // not all query Supabase for the same snapshot at once. The short lock does
+  // not extend the cache lifetime or delay normal single requests.
+  let refreshLockAcquired = false;
+  let refreshLockContended = false;
+  if (redis) {
+    try {
+      const lockResult = await redis.set(cacheKey + ":refresh-lock", "1", { nx: true, ex: 3 });
+      refreshLockAcquired = lockResult === "OK";
+      refreshLockContended = !refreshLockAcquired;
+    } catch (_) {
+      // Lock failures are non-fatal; continue with the normal Supabase fallback.
+    }
+  }
+
+  if (redis && refreshLockContended) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      try {
+        const cached = await redis.get(cacheKey);
+        const payload = typeof cached === "string" ? JSON.parse(cached) : cached;
+        if (validPayload(payload)) {
+          return send(res, 200, payload, "HIT");
+        }
+      } catch (_) {
+        // Retry briefly, then fall back to Supabase if the cache is still empty.
+      }
+    }
+  }
+
   let upstream;
   try {
     upstream = await fetch(SUPABASE_URL + "/rest/v1/rpc/favmed_get_public_queue", {
