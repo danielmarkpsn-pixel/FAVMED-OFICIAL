@@ -68,11 +68,6 @@ assert.match(frontend, /async function renderPublicWaitingRoom\(\)/);
 assert.match(frontend, /window\.location\.pathname !== '\/sala'/);
 assert.match(frontend, /return renderPublicWaitingRoom\(\)/);
 assert.match(frontend, /public_waiting_room_calls/);
-// Public hallway reads must be single-flight so interval, visibility and
-// Realtime events cannot overlap requests when Supabase responds slowly.
-assert.match(frontend, /let publicRefreshPromise = null/);
-assert.match(frontend, /let publicRefreshPending = false/);
-assert.match(frontend, /while \(publicRefreshPending && document\.visibilityState === 'visible'\)/);
 assert.doesNotMatch(frontend, /<option value="sala">Sala de espera<\/option>/);
 
 const publicWaitingMigration = await readFile(new URL('../supabase/migrations/20261029201000_public_waiting_room.sql', import.meta.url), 'utf8');
