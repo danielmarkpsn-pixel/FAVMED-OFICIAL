@@ -180,15 +180,22 @@
     async writeQueue(queue) {
       await authReady;
       const snapshot = cloneQueueSnapshot(queue);
+      // Capture the exact base state when the user action is queued. Reading
+      // lastQueueSnapshot later inside writeChain can make a stale UI snapshot
+      // look like a fresh edit and silently revert a preceding action.
+      const baseSnapshot = lastQueueSnapshot;
+      const expectedSnapshot = Array.isArray(baseSnapshot)
+        ? cloneQueueSnapshot(baseSnapshot)
+        : null;
       queueReadSequence++;
       queueWritesInProgress++;
       const operation = writeChain.then(async () => {
-        if (!Array.isArray(lastQueueSnapshot)) {
+        if (!Array.isArray(expectedSnapshot)) {
           throw new Error("Atualize a fila antes de salvar novamente.");
         }
         const before = new Map();
         const after = new Map();
-        for (const patient of lastQueueSnapshot) {
+        for (const patient of expectedSnapshot) {
           const id = String(patient && patient.id || "");
           if (!id || before.has(id)) throw new Error("A fila anterior contém identificadores inválidos ou duplicados.");
           before.set(id, patient);
@@ -224,7 +231,6 @@
               });
               queueVersion = Number(data && data.version || queueVersion + 1);
               appliedChanges = changes.length;
-              lastQueueSnapshot = snapshot;
             } catch (error) {
               // Keep compatibility with projects where the batch migration has not
               // yet been installed. Only a missing-function response may fall back.
@@ -255,6 +261,10 @@
           if (appliedChanges > 0) lastQueueSnapshot = null;
           throw error;
         }
+        // If another queued write completed from the same base snapshot, its
+        // merged server state is not represented by this UI snapshot. Invalidate
+        // the local base so the next action must read the authoritative queue.
+        lastQueueSnapshot = lastQueueSnapshot === baseSnapshot ? snapshot : null;
         return true;
       });
       writeChain = operation.catch(() => {});
