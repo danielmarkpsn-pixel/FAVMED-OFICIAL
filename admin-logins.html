@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#087f8c">
-<title>FAVMED · Administração de logins</title>
+<title>FAVMED · ADMINISTRAÇÃO DE LOGINS</title>
 <style>
 :root{color-scheme:light;--bg:#f3f6f8;--panel:#fff;--line:#dce5e9;--text:#20313a;--muted:#637984;--teal:#087f8c;--red:#b42332}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Segoe UI",Arial,sans-serif}
@@ -21,6 +21,10 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 9px
 .status{font-weight:700}.active{color:#16734a}.inactive{color:var(--red)}.small{padding:7px 10px;font-size:12px;background:#e7eef1;color:#253a43}
 #message{min-height:20px;margin-top:12px;font-size:13px;color:var(--red)}#message.ok{color:#16734a}
 @media(max-width:900px){form{grid-template-columns:1fr 1fr}}@media(max-width:680px){form{grid-template-columns:1fr}.panel{padding:15px}table{display:block;overflow-x:auto;white-space:nowrap}}
+
+/* PADRONIZAÇÃO VISUAL: TEXTOS EM MAIÚSCULAS, SEM ALTERAR VALORES DOS CAMPOS */
+body, body *:not(input):not(textarea):not(select) { text-transform: uppercase !important; }
+input, textarea, select { text-transform: none !important; }
 </style>
 </head>
 <body>
