@@ -50,6 +50,12 @@ if (!cloud.includes('rpc("favmed_update_queue_patients"') ||
     !cloud.includes('if (!isMissingRpc(error)) throw error;')) {
   throw new Error("As alterações da fila devem usar gravação em lote e manter compatibilidade com bancos sem a nova RPC.");
 }
+if (!cloud.includes("const baseSnapshot = lastQueueSnapshot;") ||
+    !cloud.includes("const expectedSnapshot = Array.isArray(baseSnapshot)") ||
+    !cloud.includes("for (const patient of expectedSnapshot)") ||
+    !cloud.includes("lastQueueSnapshot = lastQueueSnapshot === baseSnapshot ? snapshot : null;")) {
+  throw new Error("Gravações enfileiradas devem preservar o snapshot-base da ação e invalidar estados locais potencialmente desatualizados.");
+}
 const batchMigration = readFileSync("supabase/migrations/20261112000000_favmed_queue_batch_writes.sql", "utf8");
 for (const required of [
   "favmed_update_queue_patients",
