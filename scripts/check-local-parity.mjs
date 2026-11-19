@@ -39,6 +39,11 @@ if (!cloud.includes('conflict.code = "QUEUE_CONFLICT"') ||
     !cloud.includes('if (error && error.code === "QUEUE_CONFLICT")')) {
   throw new Error("Conflitos da fila devem invalidar o snapshot local para impedir novas gravações desatualizadas.");
 }
+if (!cloud.includes("const baseSnapshot = lastQueueSnapshot;") ||
+    !cloud.includes("const expectedSnapshot = Array.isArray(baseSnapshot)") ||
+    !cloud.includes("for (const patient of expectedSnapshot)") ||
+    !cloud.includes("lastQueueSnapshot = lastQueueSnapshot === baseSnapshot ? snapshot : null;")) {
+  throw new Error("Gravações enfileiradas devem preservar o snapshot-base da ação e invalidar estados locais potencialmente desatualizados.");
 if (!reception.includes('e.code==="QUEUE_CONFLICT"') ||
     !reception.includes('patients=await window.FAVMED_CLOUD.readQueue({publicMode:false})') ||
     !professional.includes('e.code==="QUEUE_CONFLICT"') ||
