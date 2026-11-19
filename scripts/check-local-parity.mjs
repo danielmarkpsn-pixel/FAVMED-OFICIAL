@@ -22,7 +22,7 @@ const auth = readFileSync("favmed-auth.js", "utf8");
 for (const id of ["patientForm", "patientList", "calledDisplay", "publicScreen", "slideshowFiles", "visualizarFicha", "clearToday"]) {
   if (!reception.includes('id="' + id + '"')) throw new Error("Tela local da recepção perdeu o elemento " + id);
 }
-if (!professional.includes("FAVMED — Painel do profissional")) throw new Error("Painel profissional local não encontrado.");
+if (!professional.toLocaleUpperCase("pt-BR").includes("FAVMED — PAINEL DO PROFISSIONAL")) throw new Error("Painel profissional local não encontrado.");
 if (!reception.includes("FAVMED_LOCAL_MODE") || !professional.includes("FAVMED_LOCAL_MODE") || !auth.includes("if (localMode)")) {
   throw new Error("O modo local precisa continuar sem autenticação.");
 }
