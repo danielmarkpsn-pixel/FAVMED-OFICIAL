@@ -44,6 +44,7 @@ if (!cloud.includes("const baseSnapshot = lastQueueSnapshot;") ||
     !cloud.includes("for (const patient of expectedSnapshot)") ||
     !cloud.includes("lastQueueSnapshot = lastQueueSnapshot === baseSnapshot ? snapshot : null;")) {
   throw new Error("Gravações enfileiradas devem preservar o snapshot-base da ação e invalidar estados locais potencialmente desatualizados.");
+}
 if (!reception.includes('e.code==="QUEUE_CONFLICT"') ||
     !reception.includes('patients=await window.FAVMED_CLOUD.readQueue({publicMode:false})') ||
     !professional.includes('e.code==="QUEUE_CONFLICT"') ||
